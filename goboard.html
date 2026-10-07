@@ -1,0 +1,250 @@
+import IPython
+
+html_code = """<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>QR코드 수업용 25x25 바둑판</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        body {
+            font-family: 'Malgun Gothic', sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background-color: #f5f5f5;
+            margin: 0;
+            padding: 15px;
+            min-height: 100vh;
+        }
+        h1 {
+            margin: 10px 0;
+            color: #333;
+            font-size: 22px;
+        }
+        .toolbar {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 15px;
+            background: white;
+            padding: 10px 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        .btn {
+            padding: 10px 14px;
+            font-size: 14px;
+            font-weight: bold;
+            border: 2px solid #ccc;
+            border-radius: 6px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            background-color: #fff;
+            touch-action: manipulation;
+        }
+        .btn.active {
+            border-color: #007BFF;
+            background-color: #E6F0FA;
+        }
+        .stone-preview {
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            display: inline-block;
+            border: 1px solid #999;
+        }
+        .black-preview { background-color: #000; }
+        .white-preview { background-color: #fff; }
+        .erase-preview {
+            background: #fff;
+            position: relative;
+            border: 1px solid #cc0000;
+        }
+        .erase-preview::before {
+            content: '';
+            position: absolute;
+            top: 50%; left: 0; width: 100%; height: 2px;
+            background: #cc0000;
+            transform: translateY(-50%) rotate(45deg);
+        }
+        .qr-btn { background-color: #28a745; color: white; border: none; }
+        .clear-btn { background-color: #ff4d4d; color: white; border: none; }
+
+        .board-container {
+            background-color: #e6b366;
+            padding: 10px;
+            border-radius: 6px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.15);
+            max-width: 100%;
+            overflow: auto;
+        }
+        .board {
+            display: grid;
+            grid-template-columns: repeat(25, minmax(18px, 24px));
+            grid-template-rows: repeat(25, minmax(18px, 24px));
+            background-color: #000;
+            gap: 1px;
+            border: 2px solid #000;
+        }
+        .cell {
+            background-color: #e6b366;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            position: relative;
+            touch-action: manipulation;
+        }
+        .stone {
+            width: 85%;
+            height: 85%;
+            border-radius: 50%;
+            z-index: 2;
+            box-shadow: 1px 1px 2px rgba(0,0,0,0.3);
+        }
+        .stone.black { background: radial-gradient(circle at 30% 30%, #555, #000 70%); }
+        .stone.white { background: radial-gradient(circle at 30% 30%, #fff, #ccc 80%); border: 1px solid #aaa; }
+    </style>
+</head>
+<body>
+
+    <h1>QR코드 실습용 바둑판 (25x25)</h1>
+
+    <div class="toolbar">
+        <button class="btn active" id="btn-black" onclick="setTool('black')">
+            <span class="stone-preview black-preview"></span> 흑돌
+        </button>
+        <button class="btn" id="btn-white" onclick="setTool('white')">
+            <span class="stone-preview white-preview"></span> 백돌
+        </button>
+        <button class="btn" id="btn-erase" onclick="setTool('erase')">
+            <span class="stone-preview erase-preview"></span> 지우개
+        </button>
+        <button class="btn qr-btn" onclick="applyQRPatterns()">QR 패턴 생성</button>
+        <button class="btn clear-btn" onclick="clearBoard()">전체 초기화</button>
+    </div>
+
+    <div class="board-container">
+        <div class="board" id="go-board"></div>
+    </div>
+
+    <script>
+        const BOARD_SIZE = 25;
+        let currentTool = 'black';
+        const boardElement = document.getElementById('go-board');
+
+        for (let row = 0; row < BOARD_SIZE; row++) {
+            for (let col = 0; col < BOARD_SIZE; col++) {
+                const cell = document.createElement('div');
+                cell.classList.add('cell');
+                cell.addEventListener('pointerdown', (e) => {
+                    e.preventDefault();
+                    handleCellClick(cell);
+                });
+                boardElement.appendChild(cell);
+            }
+        }
+
+        function setTool(tool) {
+            currentTool = tool;
+            document.querySelectorAll('.toolbar .btn').forEach(btn => btn.classList.remove('active'));
+            if (tool === 'black') document.getElementById('btn-black').classList.add('active');
+            if (tool === 'white') document.getElementById('btn-white').classList.add('active');
+            if (tool === 'erase') document.getElementById('btn-erase').classList.add('active');
+        }
+
+        function handleCellClick(cell) {
+            const existingStone = cell.querySelector('.stone');
+            if (currentTool === 'erase') {
+                if (existingStone) existingStone.remove();
+            } else {
+                if (existingStone) existingStone.remove();
+                const stone = document.createElement('div');
+                stone.classList.add('stone', currentTool);
+                cell.appendChild(stone);
+            }
+        }
+
+        function clearBoard() {
+            if (confirm('모든 돌을 지우시겠습니까?')) {
+                document.querySelectorAll('.stone').forEach(stone => stone.remove());
+            }
+        }
+
+        function placeStone(r, c, color) {
+            if (r < 0 || r >= BOARD_SIZE || c < 0 || c >= BOARD_SIZE) return;
+            const index = r * BOARD_SIZE + c;
+            const cell = boardElement.children[index];
+            const existingStone = cell.querySelector('.stone');
+            if (existingStone) existingStone.remove();
+
+            if (color === 'black' || color === 'white') {
+                const stone = document.createElement('div');
+                stone.classList.add('stone', color);
+                cell.appendChild(stone);
+            }
+        }
+
+        function applyQRPatterns() {
+            function drawFinderPattern(startR, startC) {
+                for (let dr = -1; dr <= 7; dr++) {
+                    for (let dc = -1; dc <= 7; dc++) {
+                        placeStone(startR + dr, startC + dc, 'white');
+                    }
+                }
+                for (let r = 0; r < 7; r++) {
+                    for (let c = 0; c < 7; c++) {
+                        if (r === 0 || r === 6 || c === 0 || c === 6) {
+                            placeStone(startR + r, startC + c, 'black');
+                        } else {
+                            placeStone(startR + r, startC + c, 'white');
+                        }
+                    }
+                }
+                for (let r = 2; r <= 4; r++) {
+                    for (let c = 2; c <= 4; c++) {
+                        placeStone(startR + r, startC + c, 'black');
+                    }
+                }
+            }
+
+            function drawAlignmentPattern(startR, startC) {
+                for (let r = 0; r < 5; r++) {
+                    for (let c = 0; c < 5; c++) {
+                        if (r === 0 || r === 4 || c === 0 || c === 4) {
+                            placeStone(startR + r, startC + c, 'black');
+                        } else {
+                            placeStone(startR + r, startC + c, 'white');
+                        }
+                    }
+                }
+                placeStone(startR + 2, startC + 2, 'black');
+            }
+
+            drawFinderPattern(0, 0);
+            drawFinderPattern(0, 18);
+            drawFinderPattern(18, 0);
+            drawAlignmentPattern(16, 16);
+
+            for (let c = 7; c <= 17; c++) {
+                placeStone(6, c, (c % 2 === 0) ? 'black' : 'white');
+            }
+            for (let r = 7; r <= 17; r++) {
+                placeStone(r, 6, (r % 2 === 0) ? 'black' : 'white');
+            }
+        }
+    </script>
+</body>
+</html>"""
+
+IPython.display.display(IPython.display.HTML(html_code))
