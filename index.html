@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>QR코드 수업용 25x25 바둑판</title>
+    <title>QR코드 실습용 25x25 바둑판</title>
     <style>
         * {
             box-sizing: border-box;
@@ -36,6 +36,7 @@
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
             flex-wrap: wrap;
             justify-content: center;
+            align-items: center;
         }
         .btn {
             padding: 10px 14px;
@@ -76,7 +77,19 @@
             transform: translateY(-50%) rotate(45deg);
         }
         .qr-btn { background-color: #28a745; color: white; border: none; }
+        .mask-btn { background-color: #6f42c1; color: white; border: none; }
         .clear-btn { background-color: #ff4d4d; color: white; border: none; }
+        
+        select.mask-select {
+            padding: 9px 10px;
+            font-size: 14px;
+            font-weight: bold;
+            border: 2px solid #6f42c1;
+            border-radius: 6px;
+            background-color: white;
+            color: #333;
+            cursor: pointer;
+        }
 
         .board-container {
             background-color: #e6b366;
@@ -113,6 +126,10 @@
         .stone.black { background: radial-gradient(circle at 30% 30%, #555, #000 70%); }
         .stone.white { background: radial-gradient(circle at 30% 30%, #fff, #ccc 80%); border: 1px solid #aaa; }
     </style>
+
+    <!-- PWA 매니페스트 연결 -->
+    <link rel="manifest" href="manifest.json">
+
 </head>
 <body>
 
@@ -129,6 +146,20 @@
             <span class="stone-preview erase-preview"></span> 지우개
         </button>
         <button class="btn qr-btn" onclick="applyQRPatterns()">QR 패턴 생성</button>
+
+        <!-- 마스킹 기능 영역 -->
+        <select id="mask-pattern" class="mask-select">
+            <option value="0">마스크 0: (r + c) % 2 == 0</option>
+            <option value="1">마스크 1: r % 2 == 0</option>
+            <option value="2">마스크 2: c % 3 == 0</option>
+            <option value="3">마스크 3: (r + c) % 3 == 0</option>
+            <option value="4">마스크 4: (floor(r/2) + floor(c/3)) % 2 == 0</option>
+            <option value="5">마스크 5: (r*c)%2 + (r*c)%3 == 0</option>
+            <option value="6">마스크 6: ((r*c)%2 + (r*c)%3) % 2 == 0</option>
+            <option value="7">마스크 7: ((r+c)%2 + (r*c)%3) % 2 == 0</option>
+        </select>
+        <button class="btn mask-btn" onclick="toggleMasking()">마스킹 토글(반전)</button>
+
         <button class="btn clear-btn" onclick="clearBoard()">전체 초기화</button>
     </div>
 
@@ -140,11 +171,16 @@
         const BOARD_SIZE = 25;
         let currentTool = 'black';
         const boardElement = document.getElementById('go-board');
+        
+        // 고정 패턴 보호 구역 기록용 배열 (true면 마스킹 예외)
+        const isReserved = Array.from({ length: BOARD_SIZE }, () => Array(BOARD_SIZE).fill(false));
 
         for (let row = 0; row < BOARD_SIZE; row++) {
             for (let col = 0; col < BOARD_SIZE; col++) {
                 const cell = document.createElement('div');
                 cell.classList.add('cell');
+                cell.dataset.row = row;
+                cell.dataset.col = col;
                 cell.addEventListener('pointerdown', (e) => {
                     e.preventDefault();
                     handleCellClick(cell);
@@ -176,10 +212,15 @@
         function clearBoard() {
             if (confirm('모든 돌을 지우시겠습니까?')) {
                 document.querySelectorAll('.stone').forEach(stone => stone.remove());
+                for (let r = 0; r < BOARD_SIZE; r++) {
+                    for (let c = 0; c < BOARD_SIZE; c++) {
+                        isReserved[r][c] = false;
+                    }
+                }
             }
         }
 
-        function placeStone(r, c, color) {
+        function placeStone(r, c, color, reserve = false) {
             if (r < 0 || r >= BOARD_SIZE || c < 0 || c >= BOARD_SIZE) return;
             const index = r * BOARD_SIZE + c;
             const cell = boardElement.children[index];
@@ -191,42 +232,48 @@
                 stone.classList.add('stone', color);
                 cell.appendChild(stone);
             }
+
+            if (reserve) {
+                isReserved[r][c] = true;
+            }
         }
 
         function applyQRPatterns() {
+            // 위치 감지 패턴 (Finder Pattern)
             function drawFinderPattern(startR, startC) {
                 for (let dr = -1; dr <= 7; dr++) {
                     for (let dc = -1; dc <= 7; dc++) {
-                        placeStone(startR + dr, startC + dc, 'white');
+                        placeStone(startR + dr, startC + dc, 'white', true);
                     }
                 }
                 for (let r = 0; r < 7; r++) {
                     for (let c = 0; c < 7; c++) {
                         if (r === 0 || r === 6 || c === 0 || c === 6) {
-                            placeStone(startR + r, startC + c, 'black');
+                            placeStone(startR + r, startC + c, 'black', true);
                         } else {
-                            placeStone(startR + r, startC + c, 'white');
+                            placeStone(startR + r, startC + c, 'white', true);
                         }
                     }
                 }
                 for (let r = 2; r <= 4; r++) {
                     for (let c = 2; c <= 4; c++) {
-                        placeStone(startR + r, startC + c, 'black');
+                        placeStone(startR + r, startC + c, 'black', true);
                     }
                 }
             }
 
+            // 정렬 패턴 (Alignment Pattern)
             function drawAlignmentPattern(startR, startC) {
                 for (let r = 0; r < 5; r++) {
                     for (let c = 0; c < 5; c++) {
                         if (r === 0 || r === 4 || c === 0 || c === 4) {
-                            placeStone(startR + r, startC + c, 'black');
+                            placeStone(startR + r, startC + c, 'black', true);
                         } else {
-                            placeStone(startR + r, startC + c, 'white');
+                            placeStone(startR + r, startC + c, 'white', true);
                         }
                     }
                 }
-                placeStone(startR + 2, startC + 2, 'black');
+                placeStone(startR + 2, startC + 2, 'black', true);
             }
 
             drawFinderPattern(0, 0);
@@ -234,15 +281,57 @@
             drawFinderPattern(18, 0);
             drawAlignmentPattern(16, 16);
 
+            // 타이밍 패턴 (Timing Patterns)
             for (let c = 7; c <= 17; c++) {
-                placeStone(6, c, (c % 2 === 0) ? 'black' : 'white');
+                placeStone(6, c, (c % 2 === 0) ? 'black' : 'white', true);
             }
             for (let r = 7; r <= 17; r++) {
-                placeStone(r, 6, (r % 2 === 0) ? 'black' : 'white');
+                placeStone(r, 6, (r % 2 === 0) ? 'black' : 'white', true);
+            }
+        }
+
+        // 표준 마스킹 패턴 조건 검사
+        function shouldMask(pattern, r, c) {
+            switch (parseInt(pattern)) {
+                case 0: return (r + c) % 2 === 0;
+                case 1: return r % 2 === 0;
+                case 2: return c % 3 === 0;
+                case 3: return (r + c) % 3 === 0;
+                case 4: return (Math.floor(r / 2) + Math.floor(c / 3)) % 2 === 0;
+                case 5: return ((r * c) % 2) + ((r * c) % 3) === 0;
+                case 6: return (((r * c) % 2) + ((r * c) % 3)) % 2 === 0;
+                case 7: return (((r + c) % 2) + ((r * c) % 3)) % 2 === 0;
+                default: return false;
+            }
+        }
+
+        // 선택한 마스킹 조건을 바둑판 데이터 영역에 적용 (색상 반전)
+        function toggleMasking() {
+            const pattern = document.getElementById('mask-pattern').value;
+
+            for (let r = 0; r < BOARD_SIZE; r++) {
+                for (let c = 0; c < BOARD_SIZE; c++) {
+                    // 고정 구역(Finder, Alignment, Timing 등)은 마스킹 대상에서 제외
+                    if (isReserved[r][c]) continue;
+
+                    if (shouldMask(pattern, r, c)) {
+                        const index = r * BOARD_SIZE + c;
+                        const cell = boardElement.children[index];
+                        const stone = cell.querySelector('.stone');
+
+                        if (stone) {
+                            if (stone.classList.contains('black')) {
+                                stone.classList.remove('black');
+                                stone.classList.add('white');
+                            } else if (stone.classList.contains('white')) {
+                                stone.classList.remove('white');
+                                stone.classList.add('black');
+                            }
+                        }
+                    }
+                }
             }
         }
     </script>
 </body>
-</html>"""
-
-IPython.display.display(IPython.display.HTML(html_code))
+</html>
